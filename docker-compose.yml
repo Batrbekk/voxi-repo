@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7
+    container_name: voxi-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: voxi
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - voxi-network
+
+  # Kamailio SIP Proxy
+  kamailio:
+    image: kamailio/kamailio:latest
+    container_name: voxi-kamailio
+    restart: unless-stopped
+    ports:
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+    volumes:
+      - ./kamailio/kamailio.cfg:/etc/kamailio/kamailio.cfg
+      - ./kamailio/dispatcher.list:/etc/kamailio/dispatcher.list
+    environment:
+      - SIP_DOMAIN=voxi.local
+    networks:
+      - voxi-network
+    depends_on:
+      - asterisk
+
+  # Asterisk Media Server
+  asterisk:
+    image: andrius/asterisk:latest
+    container_name: voxi-asterisk
+    restart: unless-stopped
+    ports:
+      - "5038:5038"  # AMI
+      - "8088:8088"  # ARI HTTP
+      - "8089:8089"  # ARI WebSocket
+      - "10000-10100:10000-10100/udp"  # RTP
+    volumes:
+      - ./asterisk/extensions.conf:/etc/asterisk/extensions.conf
+      - ./asterisk/pjsip.conf:/etc/asterisk/pjsip.conf
+      - ./asterisk/ari.conf:/etc/asterisk/ari.conf
+      - ./asterisk/recordings:/var/spool/asterisk/recording
+    environment:
+      - ASTERISK_UID=1000
+      - ASTERISK_GID=1000
+    networks:
+      - voxi-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: voxi-backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - MONGODB_URI=mongodb://mongodb:27017/voxi
+      - KAMAILIO_HOST=kamailio
+      - KAMAILIO_PORT=5060
+      - ASTERISK_HOST=asterisk
+      - ASTERISK_ARI_PORT=8088
+      - ASTERISK_ARI_USER=voxi
+      - ASTERISK_ARI_PASSWORD=voxi123
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - /app/dist
+    depends_on:
+      - mongodb
+      - asterisk
+      - kamailio
+    networks:
+      - voxi-network
+    command: npm run start:dev
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: voxi-frontend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:3000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:3000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - voxi-network
+    command: npm run dev
+
+volumes:
+  mongodb_data:
+  asterisk_recordings:
+
+networks:
+  voxi-network:
+    driver: bridge
