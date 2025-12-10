@@ -373,6 +373,10 @@ a=sendrecv`;
    * Extract phone number from SIP URI
    */
   private extractPhoneNumber(uri: string): string {
+    if (!uri) {
+      this.logger.warn('extractPhoneNumber called with undefined URI');
+      return 'unknown';
+    }
     const match = uri.match(/sip:(\+?\d+)@/);
     return match ? match[1] : uri;
   }
