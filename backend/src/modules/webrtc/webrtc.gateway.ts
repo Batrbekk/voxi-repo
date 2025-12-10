@@ -311,6 +311,7 @@ export class WebRtcGateway
         : sipSession.from;
 
       // Find agent assigned to this phone number
+      this.logger.log(`Looking for agent with phone number: ${phoneToCheck}`);
       const agent = await this.agentModel.findOne({
         phoneNumbers: phoneToCheck,
         isActive: true,
@@ -322,7 +323,17 @@ export class WebRtcGateway
         // Always use Gemini Live for natural conversations
         await this.handleGeminiLiveCall(sipSession, req, res, agent);
       } else {
-        this.logger.log(`No agent found for phone number ${phoneToCheck}, notifying managers`);
+        // Also try without isActive filter to debug
+        const anyAgent = await this.agentModel.findOne({
+          phoneNumbers: phoneToCheck,
+        }).lean();
+
+        if (anyAgent) {
+          this.logger.log(`Found agent ${anyAgent.name} but isActive=${anyAgent.isActive} for phone number ${phoneToCheck}`);
+        } else {
+          this.logger.log(`No agent found at all for phone number ${phoneToCheck}`);
+        }
+        this.logger.log(`No active agent found for phone number ${phoneToCheck}, notifying managers`);
 
         // No agent assigned - notify managers for manual handling
         this.server.emit('call:incoming', {
