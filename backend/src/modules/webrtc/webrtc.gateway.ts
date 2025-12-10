@@ -18,6 +18,8 @@ import { GoogleCloudService } from '../google-cloud/google-cloud.service';
 import { AIConversationService } from '../ai-conversation/ai-conversation.service';
 import { MediaService } from '../media/media.service';
 import { SipGeminiBridge } from '../gemini-live/sip-gemini-bridge.service';
+import { AriService } from '../ari/ari.service';
+import { AriGeminiBridge } from '../ari/ari-gemini-bridge.service';
 import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CallDirection, CallerType, CallStatus } from '../../schemas/conversation.schema';
@@ -54,10 +56,12 @@ export class WebRtcGateway
 
   private readonly logger = new Logger(WebRtcGateway.name);
   private managerSessions: Map<string, ManagerSession> = new Map();
-  private activeBridges: Map<string, SipGeminiBridge> = new Map();
+  private activeBridges: Map<string, any> = new Map(); // Can hold both SipGeminiBridge and AriGeminiBridge
+  private activeAriBridges: Map<string, AriGeminiBridge> = new Map();
 
   constructor(
     private sipService: SipService,
+    private ariService: AriService,
     private conversationService: ConversationService,
     private googleCloudService: GoogleCloudService,
     private aiConversationService: AIConversationService,
@@ -66,7 +70,7 @@ export class WebRtcGateway
     @InjectModel('Agent') private agentModel: Model<Agent>,
     @InjectModel('KnowledgeBase') private knowledgeBaseModel: Model<KnowledgeBase>,
   ) {
-    // Listen to SIP service events
+    // Listen to SIP service events (legacy/Drachtio)
     this.sipService.on('call:incoming', (data) => {
       this.handleIncomingCall(data);
     });
@@ -85,6 +89,15 @@ export class WebRtcGateway
 
     this.sipService.on('call:failed', (session) => {
       this.notifyCallStatus(session.callId, 'failed');
+    });
+
+    // Listen to ARI events (Asterisk)
+    this.ariService.on('channel:start', (data) => {
+      this.handleAriChannelStart(data);
+    });
+
+    this.ariService.on('channel:end', (data) => {
+      this.handleAriChannelEnd(data);
     });
 
     // Listen to AI conversation service events
@@ -645,5 +658,221 @@ export class WebRtcGateway
       }
     }
     return count;
+  }
+
+  /**
+   * Handle ARI channel start (incoming call from Asterisk)
+   */
+  private async handleAriChannelStart(data: { channel: any; ariChannel: any; args: string[] }): Promise<void> {
+    const { channel, ariChannel } = data;
+
+    this.logger.log(`ARI channel started: ${channel.id}`);
+    this.logger.log(`Caller: ${channel.caller.number} -> ${channel.connected.number}`);
+
+    try {
+      // Find agent assigned to this phone number
+      const phoneToCheck = channel.connected.number;
+
+      const agent = await this.agentModel.findOne({
+        phoneNumbers: phoneToCheck,
+        isActive: true,
+      }).lean();
+
+      if (agent) {
+        this.logger.log(`Agent ${agent.name} found for phone number ${phoneToCheck}`);
+
+        // Use Gemini Live with ARI for natural conversations
+        await this.handleAriGeminiLiveCall(channel, ariChannel, agent);
+      } else {
+        this.logger.log(`No agent found for phone number ${phoneToCheck}, notifying managers`);
+
+        // No agent assigned - notify managers for manual handling
+        this.server.emit('call:incoming', {
+          callId: channel.id,
+          phoneNumber: channel.caller.number,
+          startedAt: channel.creationtime,
+        });
+      }
+    } catch (error) {
+      this.logger.error(`Failed to handle ARI channel start ${channel.id}:`, error);
+
+      // Hangup the channel on error
+      try {
+        await this.ariService.hangupChannel(channel.id);
+      } catch (hangupError) {
+        this.logger.error(`Failed to hangup channel ${channel.id}:`, hangupError);
+      }
+    }
+  }
+
+  /**
+   * Handle ARI channel end
+   */
+  private async handleAriChannelEnd(data: { channel: any; ariChannel: any }): Promise<void> {
+    const { channel } = data;
+
+    this.logger.log(`ARI channel ended: ${channel.id}`);
+
+    // Check if there's an active ARI-Gemini bridge
+    const bridge = this.activeAriBridges.get(channel.id);
+    if (bridge) {
+      try {
+        await bridge.stop();
+        this.activeAriBridges.delete(channel.id);
+        this.logger.log(`ARI-Gemini bridge stopped for channel ${channel.id}`);
+      } catch (error) {
+        this.logger.error(`Failed to stop ARI-Gemini bridge for channel ${channel.id}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Handle incoming call with Gemini Live API using ARI
+   */
+  private async handleAriGeminiLiveCall(
+    channel: any,
+    ariChannel: any,
+    agent: any,
+  ): Promise<void> {
+    try {
+      this.logger.log(`Starting Gemini Live session for ARI channel ${channel.id}`);
+
+      // Get knowledge base if configured
+      let knowledgeBase: any = null;
+      if (agent.knowledgeBaseId) {
+        knowledgeBase = await this.knowledgeBaseModel.findById(agent.knowledgeBaseId).lean();
+      }
+
+      // Create a new ARI-Gemini bridge instance
+      const bridge = new AriGeminiBridge(this.configService, this.ariService);
+
+      // Build comprehensive system prompt
+      let systemPrompt = `You are ${agent.name}, a professional voice agent.\n\n`;
+      systemPrompt += agent.aiSettings?.systemPrompt || 'You are a helpful assistant.';
+      systemPrompt += `\n\nYour name is: ${agent.name}`;
+      systemPrompt += `\nYour role: Sales representative`;
+      systemPrompt += `\nCompany: ${(agent as any).companyName || 'Our company'}`;
+
+      // Prepare configuration for Gemini Live
+      const config = {
+        channelId: channel.id,
+        callerNumber: channel.caller.number,
+        calledNumber: channel.connected.number,
+        direction: 'inbound' as const,
+        agentId: agent._id.toString(),
+        agentName: agent.name,
+        companyName: (agent as any).companyName,
+        systemPrompt: systemPrompt,
+        voiceSettings: agent.voiceSettings || {
+          voiceName: 'Aoede',
+          language: 'ru',
+          speakingRate: 1.0,
+          pitch: 0,
+        },
+        greetingMessages: {
+          inbound: agent.inboundGreetingMessage,
+          outbound: agent.outboundGreetingMessage,
+          fallback: agent.fallbackMessage,
+          ending: agent.endingMessage,
+        },
+        knowledgeBase: knowledgeBase ? {
+          name: knowledgeBase.name,
+          description: knowledgeBase.description,
+          documents: knowledgeBase.documents,
+        } : null,
+        temperature: agent.aiSettings?.temperature || 0.7,
+      };
+
+      // Set up bridge event handlers
+      bridge.on('transcript', (data) => {
+        this.logger.debug(`Transcript: ${data.text}`);
+      });
+
+      bridge.on('bridgeEnded', async (data) => {
+        this.logger.log(`ARI-Gemini bridge ended for channel ${channel.id}`);
+
+        try {
+          // Process the conversation data
+          const transcript = data.transcriptSegments
+            .map((seg: any) => `${seg.role === 'user' ? 'Пользователь' : 'Ассистент'}: ${seg.text}`)
+            .join('\n\n');
+
+          // Upload audio recording to Google Cloud Storage
+          let audioUrl: string | null = null;
+          if (data.recordingBuffer && data.recordingBuffer.length > 0) {
+            audioUrl = await this.googleCloudService.uploadAudioFile(
+              data.recordingBuffer,
+              `${channel.id}.pcm`,
+              'audio/pcm',
+            );
+          }
+
+          // Analyze conversation
+          const analysis = await this.googleCloudService.analyzeConversation(transcript);
+
+          // Create conversation record
+          const conversation = await this.conversationService.createConversation(
+            agent.companyId,
+            {
+              callId: channel.id,
+              phoneNumber: channel.caller.number,
+              direction: CallDirection.INBOUND,
+              callerType: CallerType.AI_AGENT,
+              agentId: agent._id.toString(),
+              startedAt: channel.creationtime,
+            },
+          );
+
+          // Update with complete data
+          await this.conversationService.updateConversation(
+            conversation._id as any,
+            agent._id.toString() as any,
+            {
+              status: CallStatus.COMPLETED,
+              endedAt: new Date().toISOString(),
+              duration: data.duration,
+              audioUrl: audioUrl || undefined,
+              transcript,
+              aiAnalysis: analysis,
+              metadata: {
+                isGeminiLive: true,
+                isAsteriskAri: true,
+                transcriptSegments: data.transcriptSegments.length,
+              },
+            },
+          );
+
+          this.logger.log(`Conversation saved for ARI-Gemini call ${channel.id}`);
+        } catch (error) {
+          this.logger.error(`Failed to save ARI-Gemini conversation:`, error);
+        }
+
+        // Remove from active bridges
+        this.activeAriBridges.delete(channel.id);
+      });
+
+      bridge.on('error', (error) => {
+        this.logger.error(`ARI-Gemini bridge error for channel ${channel.id}:`, error);
+        this.activeAriBridges.delete(channel.id);
+      });
+
+      // Start the bridge
+      await bridge.start(channel.id, config);
+
+      // Store the bridge for later cleanup
+      this.activeAriBridges.set(channel.id, bridge);
+
+      this.logger.log(`ARI-Gemini Live session active for channel ${channel.id}`);
+
+    } catch (error) {
+      this.logger.error(`Failed to start ARI-Gemini Live session for channel ${channel.id}:`, error);
+
+      // Hangup the channel on error
+      try {
+        await this.ariService.hangupChannel(channel.id);
+      } catch (hangupError) {
+        this.logger.error(`Failed to hangup channel ${channel.id}:`, hangupError);
+      }
+    }
   }
 }
