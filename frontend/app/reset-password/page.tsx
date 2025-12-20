@@ -202,20 +202,20 @@ export default function ResetPasswordPage() {
                   <div className="text-xs space-y-2 p-3 rounded-md border bg-muted/50">
                     <p className="font-medium text-muted-foreground mb-2">Требования к паролю:</p>
                     <ul className="space-y-1">
-                      <li className={passwordRequirements.minLength ? "text-green-600" : "text-red-600"}>
-                        {passwordRequirements.minLength ? "✓" : "✗"} Минимум 8 символов
+                      <li className={password.length > 0 ? (passwordRequirements.minLength ? "text-green-600" : "text-red-600") : "text-muted-foreground"}>
+                        {password.length > 0 ? (passwordRequirements.minLength ? "✓" : "✗") : "○"} Минимум 8 символов
                       </li>
-                      <li className={passwordRequirements.hasUppercase ? "text-green-600" : "text-red-600"}>
-                        {passwordRequirements.hasUppercase ? "✓" : "✗"} Одна заглавная буква (A-Z)
+                      <li className={password.length > 0 ? (passwordRequirements.hasUppercase ? "text-green-600" : "text-red-600") : "text-muted-foreground"}>
+                        {password.length > 0 ? (passwordRequirements.hasUppercase ? "✓" : "✗") : "○"} Одна заглавная буква (A-Z)
                       </li>
-                      <li className={passwordRequirements.hasLowercase ? "text-green-600" : "text-red-600"}>
-                        {passwordRequirements.hasLowercase ? "✓" : "✗"} Одна строчная буква (a-z)
+                      <li className={password.length > 0 ? (passwordRequirements.hasLowercase ? "text-green-600" : "text-red-600") : "text-muted-foreground"}>
+                        {password.length > 0 ? (passwordRequirements.hasLowercase ? "✓" : "✗") : "○"} Одна строчная буква (a-z)
                       </li>
-                      <li className={passwordRequirements.hasNumber ? "text-green-600" : "text-red-600"}>
-                        {passwordRequirements.hasNumber ? "✓" : "✗"} Одна цифра (0-9)
+                      <li className={password.length > 0 ? (passwordRequirements.hasNumber ? "text-green-600" : "text-red-600") : "text-muted-foreground"}>
+                        {password.length > 0 ? (passwordRequirements.hasNumber ? "✓" : "✗") : "○"} Одна цифра (0-9)
                       </li>
-                      <li className={passwordRequirements.hasSpecial ? "text-green-600" : "text-red-600"}>
-                        {passwordRequirements.hasSpecial ? "✓" : "✗"} Один спецсимвол (!@#$%^&* и т.д.)
+                      <li className={password.length > 0 ? (passwordRequirements.hasSpecial ? "text-green-600" : "text-red-600") : "text-muted-foreground"}>
+                        {password.length > 0 ? (passwordRequirements.hasSpecial ? "✓" : "✗") : "○"} Один спецсимвол (!@#$%^&* и т.д.)
                       </li>
                     </ul>
                   </div>
