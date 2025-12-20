@@ -199,28 +199,26 @@ export default function ResetPasswordPage() {
                   />
 
                   {/* Требования к паролю с динамической подсветкой */}
-                  {password && (
-                    <div className="text-xs space-y-2 p-3 rounded-md border bg-muted/50">
-                      <p className="font-medium text-muted-foreground mb-2">Требования к паролю:</p>
-                      <ul className="space-y-1">
-                        <li className={passwordRequirements.minLength ? "text-green-600" : "text-red-600"}>
-                          {passwordRequirements.minLength ? "✓" : "✗"} Минимум 8 символов
-                        </li>
-                        <li className={passwordRequirements.hasUppercase ? "text-green-600" : "text-red-600"}>
-                          {passwordRequirements.hasUppercase ? "✓" : "✗"} Одна заглавная буква (A-Z)
-                        </li>
-                        <li className={passwordRequirements.hasLowercase ? "text-green-600" : "text-red-600"}>
-                          {passwordRequirements.hasLowercase ? "✓" : "✗"} Одна строчная буква (a-z)
-                        </li>
-                        <li className={passwordRequirements.hasNumber ? "text-green-600" : "text-red-600"}>
-                          {passwordRequirements.hasNumber ? "✓" : "✗"} Одна цифра (0-9)
-                        </li>
-                        <li className={passwordRequirements.hasSpecial ? "text-green-600" : "text-red-600"}>
-                          {passwordRequirements.hasSpecial ? "✓" : "✗"} Один спецсимвол (!@#$%^&* и т.д.)
-                        </li>
-                      </ul>
-                    </div>
-                  )}
+                  <div className="text-xs space-y-2 p-3 rounded-md border bg-muted/50">
+                    <p className="font-medium text-muted-foreground mb-2">Требования к паролю:</p>
+                    <ul className="space-y-1">
+                      <li className={passwordRequirements.minLength ? "text-green-600" : "text-red-600"}>
+                        {passwordRequirements.minLength ? "✓" : "✗"} Минимум 8 символов
+                      </li>
+                      <li className={passwordRequirements.hasUppercase ? "text-green-600" : "text-red-600"}>
+                        {passwordRequirements.hasUppercase ? "✓" : "✗"} Одна заглавная буква (A-Z)
+                      </li>
+                      <li className={passwordRequirements.hasLowercase ? "text-green-600" : "text-red-600"}>
+                        {passwordRequirements.hasLowercase ? "✓" : "✗"} Одна строчная буква (a-z)
+                      </li>
+                      <li className={passwordRequirements.hasNumber ? "text-green-600" : "text-red-600"}>
+                        {passwordRequirements.hasNumber ? "✓" : "✗"} Одна цифра (0-9)
+                      </li>
+                      <li className={passwordRequirements.hasSpecial ? "text-green-600" : "text-red-600"}>
+                        {passwordRequirements.hasSpecial ? "✓" : "✗"} Один спецсимвол (!@#$%^&* и т.д.)
+                      </li>
+                    </ul>
+                  </div>
 
                   <Button
                     type="submit"
