@@ -43,6 +43,16 @@ export default function ResetPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [passwordReset, setPasswordReset] = useState(false);
+  const [password, setPassword] = useState("");
+
+  // Проверка требований к паролю
+  const passwordRequirements = {
+    minLength: password.length >= 8,
+    hasUppercase: /[A-Z]/.test(password),
+    hasLowercase: /[a-z]/.test(password),
+    hasNumber: /\d/.test(password),
+    hasSpecial: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+  };
 
   useEffect(() => {
     const tokenParam = searchParams.get("token");
@@ -125,18 +135,6 @@ export default function ResetPasswordPage() {
                 ? "Пароль успешно изменен"
                 : "Введите новый пароль"}
             </p>
-            {!passwordReset && (
-              <div className="text-xs text-muted-foreground mt-2 space-y-1">
-                <p className="font-medium">Требования к паролю:</p>
-                <ul className="list-disc list-inside text-left max-w-[300px] mx-auto">
-                  <li>Минимум 8 символов</li>
-                  <li>Одна заглавная буква</li>
-                  <li>Одна строчная буква</li>
-                  <li>Одна цифра</li>
-                  <li>Один спецсимвол (!@#$%^&* и т.д.)</li>
-                </ul>
-              </div>
-            )}
           </div>
 
           {passwordReset ? (
@@ -170,6 +168,10 @@ export default function ResetPasswordPage() {
                             autoCorrect="off"
                             disabled={isLoading}
                             {...field}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              setPassword(e.target.value);
+                            }}
                           />
                         </FormControl>
                         <FormMessage />
@@ -195,6 +197,31 @@ export default function ResetPasswordPage() {
                       </FormItem>
                     )}
                   />
+
+                  {/* Требования к паролю с динамической подсветкой */}
+                  {password && (
+                    <div className="text-xs space-y-2 p-3 rounded-md border bg-muted/50">
+                      <p className="font-medium text-muted-foreground mb-2">Требования к паролю:</p>
+                      <ul className="space-y-1">
+                        <li className={passwordRequirements.minLength ? "text-green-600" : "text-red-600"}>
+                          {passwordRequirements.minLength ? "✓" : "✗"} Минимум 8 символов
+                        </li>
+                        <li className={passwordRequirements.hasUppercase ? "text-green-600" : "text-red-600"}>
+                          {passwordRequirements.hasUppercase ? "✓" : "✗"} Одна заглавная буква (A-Z)
+                        </li>
+                        <li className={passwordRequirements.hasLowercase ? "text-green-600" : "text-red-600"}>
+                          {passwordRequirements.hasLowercase ? "✓" : "✗"} Одна строчная буква (a-z)
+                        </li>
+                        <li className={passwordRequirements.hasNumber ? "text-green-600" : "text-red-600"}>
+                          {passwordRequirements.hasNumber ? "✓" : "✗"} Одна цифра (0-9)
+                        </li>
+                        <li className={passwordRequirements.hasSpecial ? "text-green-600" : "text-red-600"}>
+                          {passwordRequirements.hasSpecial ? "✓" : "✗"} Один спецсимвол (!@#$%^&* и т.д.)
+                        </li>
+                      </ul>
+                    </div>
+                  )}
+
                   <Button
                     type="submit"
                     disabled={isLoading}
